@@ -1,5 +1,2 @@
 # Akadiongym
-
-
-
-## Launch your development https://indiagym.netlify.app/
+https://indiagym.netlify.app/
