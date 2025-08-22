@@ -1,0 +1,317 @@
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import { 
+  Box, 
+  Stack, 
+  Typography, 
+  Pagination, 
+  Grid, 
+  FormControl, 
+  InputLabel, 
+  Select, 
+  MenuItem, 
+  ToggleButton, 
+  ToggleButtonGroup,
+  Chip,
+  Alert,
+  Skeleton,
+  IconButton,
+  Tooltip
+} from '@mui/material';
+import { ViewModule, ViewList, Refresh } from '@mui/icons-material';
+
+import { exerciseOptions, fetchData } from '../utils/fetchData';
+import ExerciseCard from './ExerciseCard';
+import Loader from './Loader';
+
+const Exercises = ({ exercises, setExercises, bodyPart, searchTerm = '' }) => {
+  const [currentPage, setCurrentPage] = useState(1);
+  const [exercisesPerPage, setExercisesPerPage] = useState(12);
+  const [sortBy, setSortBy] = useState('name');
+  const [viewMode, setViewMode] = useState('grid');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [equipment, setEquipment] = useState('all');
+  const [availableEquipment, setAvailableEquipment] = useState([]);
+
+  // Fetch exercises data
+  const fetchExercisesData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      let exercisesData = [];
+
+      if (bodyPart === 'all') {
+        exercisesData = await fetchData('https://exercisedb.p.rapidapi.com/exercises', exerciseOptions);
+      } else {
+        exercisesData = await fetchData(`https://exercisedb.p.rapidapi.com/exercises/bodyPart/${bodyPart}`, exerciseOptions);
+      }
+
+      setExercises(exercisesData);
+      
+      // Extract unique equipment types
+      const uniqueEquipment = [...new Set(exercisesData.map(ex => ex.equipment))];
+      setAvailableEquipment(uniqueEquipment);
+      
+    } catch (err) {
+      setError('Failed to load exercises. Please try again.');
+      console.error('Error fetching exercises:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [bodyPart, setExercises]);
+
+  useEffect(() => {
+    fetchExercisesData();
+  }, [fetchExercisesData]);
+
+  // Reset to first page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [bodyPart, searchTerm, equipment, sortBy]);
+
+  // Filter and sort exercises
+  const filteredAndSortedExercises = useMemo(() => {
+    let filtered = exercises;
+
+    // Apply search filter
+    if (searchTerm) {
+      filtered = filtered.filter(exercise =>
+        exercise.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        exercise.target.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        exercise.equipment.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        exercise.bodyPart.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    // Apply equipment filter
+    if (equipment !== 'all') {
+      filtered = filtered.filter(exercise => exercise.equipment === equipment);
+    }
+
+    // Apply sorting
+    filtered.sort((a, b) => {
+      switch (sortBy) {
+        case 'name':
+          return a.name.localeCompare(b.name);
+        case 'bodyPart':
+          return a.bodyPart.localeCompare(b.bodyPart);
+        case 'target':
+          return a.target.localeCompare(b.target);
+        case 'equipment':
+          return a.equipment.localeCompare(b.equipment);
+        default:
+          return 0;
+      }
+    });
+
+    return filtered;
+  }, [exercises, searchTerm, equipment, sortBy]);
+
+  // Pagination
+  const indexOfLastExercise = currentPage * exercisesPerPage;
+  const indexOfFirstExercise = indexOfLastExercise - exercisesPerPage;
+  const currentExercises = filteredAndSortedExercises.slice(indexOfFirstExercise, indexOfLastExercise);
+
+  const handlePageChange = (event, value) => {
+    setCurrentPage(value);
+    
+    // Smooth scroll to exercises section
+    const exercisesElement = document.getElementById('exercises');
+    if (exercisesElement) {
+      exercisesElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
+  const handleRetry = () => {
+    fetchExercisesData();
+  };
+
+  // Loading skeleton
+  const renderSkeleton = () => (
+    <Grid container spacing={3} justifyContent="center">
+      {Array.from(new Array(exercisesPerPage)).map((_, index) => (
+        <Grid item xs={12} sm={6} md={4} lg={3} key={index}>
+          <Skeleton variant="rectangular" height={326} sx={{ borderRadius: 1 }} />
+          <Box sx={{ pt: 1 }}>
+            <Skeleton width="60%" />
+            <Skeleton width="40%" />
+            <Skeleton width="80%" />
+          </Box>
+        </Grid>
+      ))}
+    </Grid>
+  );
+
+  if (error) {
+    return (
+      <Box id="exercises" sx={{ mt: { lg: '109px' }, mx: 'auto', maxWidth: 1200 }} mt="50px" p="20px">
+        <Alert 
+          severity="error" 
+          action={
+            <IconButton color="inherit" size="small" onClick={handleRetry}>
+              <Refresh />
+            </IconButton>
+          }
+        >
+          {error}
+        </Alert>
+      </Box>
+    );
+  }
+
+  return (
+    <Box id="exercises" sx={{ mt: { lg: '109px' }, mx: 'auto', maxWidth: 1200 }} mt="50px" p="20px">
+      {/* Header with results count and active filters */}
+      <Box sx={{ mb: 3 }}>
+        <Typography variant="h4" fontWeight="bold" sx={{ fontSize: { lg: '44px', xs: '30px' } }} mb={2}>
+          {loading ? 'Loading...' : `Showing ${filteredAndSortedExercises.length} Results`}
+        </Typography>
+        
+        {/* Active filters */}
+        <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mb: 2 }}>
+          {bodyPart !== 'all' && (
+            <Chip label={`Body Part: ${bodyPart}`} variant="outlined" size="small" />
+          )}
+          {equipment !== 'all' && (
+            <Chip label={`Equipment: ${equipment}`} variant="outlined" size="small" />
+          )}
+          {searchTerm && (
+            <Chip label={`Search: ${searchTerm}`} variant="outlined" size="small" />
+          )}
+        </Stack>
+      </Box>
+
+      {/* Controls */}
+      <Stack 
+        direction={{ xs: 'column', sm: 'row' }} 
+        spacing={2} 
+        alignItems={{ xs: 'stretch', sm: 'center' }}
+        justifyContent="space-between"
+        sx={{ mb: 3 }}
+      >
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} flex={1}>
+          {/* Sort by */}
+          <FormControl size="small" sx={{ minWidth: 120 }}>
+            <InputLabel>Sort by</InputLabel>
+            <Select
+              value={sortBy}
+              label="Sort by"
+              onChange={(e) => setSortBy(e.target.value)}
+            >
+              <MenuItem value="name">Name</MenuItem>
+              <MenuItem value="bodyPart">Body Part</MenuItem>
+              <MenuItem value="target">Target Muscle</MenuItem>
+              <MenuItem value="equipment">Equipment</MenuItem>
+            </Select>
+          </FormControl>
+
+          {/* Equipment filter */}
+          <FormControl size="small" sx={{ minWidth: 120 }}>
+            <InputLabel>Equipment</InputLabel>
+            <Select
+              value={equipment}
+              label="Equipment"
+              onChange={(e) => setEquipment(e.target.value)}
+            >
+              <MenuItem value="all">All Equipment</MenuItem>
+              {availableEquipment.map((eq) => (
+                <MenuItem key={eq} value={eq} sx={{ textTransform: 'capitalize' }}>
+                  {eq}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
+          {/* Items per page */}
+          <FormControl size="small" sx={{ minWidth: 100 }}>
+            <InputLabel>Per Page</InputLabel>
+            <Select
+              value={exercisesPerPage}
+              label="Per Page"
+              onChange={(e) => setExercisesPerPage(e.target.value)}
+            >
+              <MenuItem value={6}>6</MenuItem>
+              <MenuItem value={12}>12</MenuItem>
+              <MenuItem value={24}>24</MenuItem>
+              <MenuItem value={48}>48</MenuItem>
+            </Select>
+          </FormControl>
+        </Stack>
+
+        {/* View mode toggle */}
+        <ToggleButtonGroup
+          value={viewMode}
+          exclusive
+          onChange={(e, newMode) => newMode && setViewMode(newMode)}
+          size="small"
+        >
+          <ToggleButton value="grid">
+            <Tooltip title="Grid View">
+              <ViewModule />
+            </Tooltip>
+          </ToggleButton>
+          <ToggleButton value="list">
+            <Tooltip title="List View">
+              <ViewList />
+            </Tooltip>
+          </ToggleButton>
+        </ToggleButtonGroup>
+      </Stack>
+
+      {/* Exercises Grid/List */}
+      {loading ? (
+        renderSkeleton()
+      ) : currentExercises.length === 0 ? (
+        <Box textAlign="center" py={8}>
+          <Typography variant="h6" color="text.secondary" mb={2}>
+            No exercises found
+          </Typography>
+          <Typography color="text.secondary">
+            Try adjusting your filters or search terms
+          </Typography>
+        </Box>
+      ) : (
+        <Grid 
+          container 
+          spacing={viewMode === 'grid' ? 3 : 2} 
+          justifyContent={viewMode === 'grid' ? 'center' : 'flex-start'}
+        >
+          {currentExercises.map((exercise, idx) => (
+            <Grid 
+              item 
+              xs={12} 
+              sm={viewMode === 'grid' ? 6 : 12} 
+              md={viewMode === 'grid' ? 4 : 12} 
+              lg={viewMode === 'grid' ? 3 : 12} 
+              key={exercise.id || idx}
+            >
+              <ExerciseCard exercise={exercise} viewMode={viewMode} />
+            </Grid>
+          ))}
+        </Grid>
+      )}
+
+      {/* Pagination */}
+      {filteredAndSortedExercises.length > exercisesPerPage && (
+        <Stack sx={{ mt: { lg: '60px', xs: '40px' } }} alignItems="center" spacing={2}>
+          <Typography variant="body2" color="text.secondary">
+            Showing {indexOfFirstExercise + 1}-{Math.min(indexOfLastExercise, filteredAndSortedExercises.length)} of {filteredAndSortedExercises.length} exercises
+          </Typography>
+          <Pagination
+            color="primary"
+            shape="rounded"
+            count={Math.ceil(filteredAndSortedExercises.length / exercisesPerPage)}
+            page={currentPage}
+            onChange={handlePageChange}
+            size="large"
+            showFirstButton
+            showLastButton
+          />
+        </Stack>
+      )}
+    </Box>
+  );
+};
+
+export default Exercises;
